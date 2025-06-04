@@ -16,6 +16,7 @@ import GoalTracker from "@/components/GoalTracker";
 import ExpenseSummary from "@/components/ExpenseSummary";
 import SpendingTrends from "@/components/SpendingTrends";
 import ExpenseForm from "@/components/ExpenseForm";
+import AccountLinking from "@/components/AccountLinking";
 
 const Dashboard = () => {
   const [showExpenseForm, setShowExpenseForm] = useState(false);
@@ -150,6 +151,7 @@ const Dashboard = () => {
             <TabsList>
               <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="expenses">Expenses</TabsTrigger>
+              <TabsTrigger value="accounts">Accounts</TabsTrigger>
               <TabsTrigger value="goals">Goals</TabsTrigger>
               <TabsTrigger value="insights">Insights</TabsTrigger>
             </TabsList>
@@ -229,6 +231,10 @@ const Dashboard = () => {
                 </div>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="accounts" className="mt-6">
+            <AccountLinking userId={userData.name} />
           </TabsContent>
 
           <TabsContent value="goals" className="mt-6">
@@ -328,7 +334,7 @@ const Dashboard = () => {
 
       {/* Expense Form Dialog */}
       {showExpenseForm && (
-        <ExpenseForm onClose={() => setShowExpenseForm(false)} />
+        <ExpenseForm open={showExpenseForm} onOpenChange={setShowExpenseForm} />
       )}
     </div>
   );

@@ -40,15 +40,27 @@ const HomePage = () => {
               <h1 className="text-xl font-bold">FinTrack</h1>
             </div>
             <nav className="hidden md:flex items-center space-x-4">
-              <Button variant="ghost" className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                className="flex items-center gap-2"
+                onClick={() => (window.location.href = "/dashboard")}
+              >
                 <Home className="h-4 w-4" />
                 Dashboard
               </Button>
-              <Button variant="ghost" className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                className="flex items-center gap-2"
+                onClick={() => (window.location.href = "/reports")}
+              >
                 <PieChart className="h-4 w-4" />
                 Reports
               </Button>
-              <Button variant="ghost" className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                className="flex items-center gap-2"
+                onClick={() => (window.location.href = "/settings")}
+              >
                 <Settings className="h-4 w-4" />
                 Settings
               </Button>
@@ -75,16 +87,24 @@ const HomePage = () => {
               <DropdownMenuContent align="end">
                 <DropdownMenuLabel>My Account</DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => (window.location.href = "/profile")}
+                >
                   <User className="mr-2 h-4 w-4" />
                   Profile
                 </DropdownMenuItem>
-                <DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => (window.location.href = "/settings")}
+                >
                   <Settings className="mr-2 h-4 w-4" />
                   Settings
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem>Log out</DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => (window.location.href = "/auth")}
+                >
+                  Log out
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
