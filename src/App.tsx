@@ -7,24 +7,26 @@ import Dashboard from "./pages/Dashboard";
 import routes from "tempo-routes";
 
 function App() {
-  // Create a component that uses the routes
-  const TempoRoutes = () => useRoutes(routes);
-
   return (
-    <Suspense fallback={<p>Loading...</p>}>
-      <>
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/auth" element={<AuthPage />} />
-          <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
-          <Route path="/dashboard" element={<Dashboard />} />
-          {/* Add a catch-all route for Tempo routes */}
-          {import.meta.env.VITE_TEMPO === "true" && (
-            <Route path="/tempobook/*" element={<></>} />
-          )}
-        </Routes>
-        {import.meta.env.VITE_TEMPO === "true" && <TempoRoutes />}
-      </>
+    <Suspense fallback={<div>Loading...</div>}>
+      {/* Tempo routes */}
+      {import.meta.env.VITE_TEMPO === "true" && useRoutes(routes)}
+
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/auth" element={<AuthPage />} />
+        <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+        <Route path="/dashboard" element={<Dashboard />} />
+        {/* Handle email verification and password reset routes */}
+        <Route path="/auth/verify" element={<AuthPage />} />
+        <Route path="/auth/reset-password" element={<AuthPage />} />
+        {/* Allow Tempo routes to pass through */}
+        {import.meta.env.VITE_TEMPO === "true" && (
+          <Route path="/tempobook/*" element={<div />} />
+        )}
+        {/* Catch-all route for unmatched paths */}
+        <Route path="*" element={<Home />} />
+      </Routes>
     </Suspense>
   );
 }
