@@ -334,7 +334,7 @@ const Dashboard = () => {
 
       {/* Expense Form Dialog */}
       {showExpenseForm && (
-        <ExpenseForm open={showExpenseForm} onOpenChange={setShowExpenseForm} />
+        <ExpenseForm onClose={() => setShowExpenseForm(false)} />
       )}
     </div>
   );

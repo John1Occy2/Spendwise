@@ -347,4 +347,94 @@ export const dbHelpers = {
 
     return combined.slice(0, limit);
   },
+
+  // Email verification operations
+  async sendVerificationEmail(email: string, fullName: string) {
+    try {
+      // Validate email format before sending
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        throw new Error("Invalid email format");
+      }
+
+      const { data, error } = await supabase.functions.invoke(
+        "supabase-functions-send-verification-email",
+        {
+          body: { email, fullName },
+        },
+      );
+
+      if (error) {
+        console.error("Email sending error:", error);
+        throw new Error(error.message || "Failed to send verification email");
+      }
+
+      return data;
+    } catch (error) {
+      console.error("Send verification email error:", error);
+      throw error;
+    }
+  },
+
+  async verifyEmailCode(email: string, code: string) {
+    try {
+      // Validate inputs
+      if (!email || !code) {
+        throw new Error("Email and verification code are required");
+      }
+
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        throw new Error("Invalid email format");
+      }
+
+      if (code.length !== 6 || !/^\d{6}$/.test(code)) {
+        throw new Error("Verification code must be 6 digits");
+      }
+
+      // Check if the code exists and is valid
+      const { data, error } = await supabase
+        .from("email_verifications")
+        .select("*")
+        .eq("email", email)
+        .eq("code", code)
+        .eq("verified", false)
+        .gte("expires_at", new Date().toISOString())
+        .single();
+
+      if (error) {
+        console.error("Database error during verification:", error);
+        if (error.code === "PGRST116") {
+          throw new Error("Invalid or expired verification code");
+        }
+        throw new Error("Database error occurred during verification");
+      }
+
+      if (!data) {
+        throw new Error("Invalid or expired verification code");
+      }
+
+      // Mark the code as verified
+      const { error: updateError } = await supabase
+        .from("email_verifications")
+        .update({
+          verified: true,
+          verified_at: new Date().toISOString(),
+        })
+        .eq("id", data.id);
+
+      if (updateError) {
+        console.error(
+          "Database error during verification update:",
+          updateError,
+        );
+        throw new Error("Failed to verify code");
+      }
+
+      return data;
+    } catch (error) {
+      console.error("Email verification error:", error);
+      throw error;
+    }
+  },
 };

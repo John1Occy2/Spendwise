@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { supabase } from "@/lib/supabase";
+import { supabase, dbHelpers } from "@/lib/supabase";
 
 import {
   Card,
@@ -81,10 +81,18 @@ const verifyResetCodeSchema = z
     path: ["confirmPassword"],
   });
 
+const verifyEmailSchema = z.object({
+  code: z
+    .string()
+    .min(6, { message: "Verification code must be 6 digits" })
+    .max(6, { message: "Verification code must be 6 digits" }),
+});
+
 type LoginFormValues = z.infer<typeof loginSchema>;
 type SignupFormValues = z.infer<typeof signupSchema>;
 type ResetPasswordFormValues = z.infer<typeof resetPasswordSchema>;
 type VerifyResetCodeFormValues = z.infer<typeof verifyResetCodeSchema>;
+type VerifyEmailFormValues = z.infer<typeof verifyEmailSchema>;
 
 export default function AuthPage() {
   const [isLoading, setIsLoading] = useState(false);
@@ -93,6 +101,9 @@ export default function AuthPage() {
   const [resetEmailSent, setResetEmailSent] = useState(false);
   const [showResetCodeForm, setShowResetCodeForm] = useState(false);
   const [resetEmail, setResetEmail] = useState("");
+  const [showEmailVerification, setShowEmailVerification] = useState(false);
+  const [verificationEmail, setVerificationEmail] = useState("");
+  const [verificationSent, setVerificationSent] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -135,6 +146,14 @@ export default function AuthPage() {
     },
   });
 
+  // Verify email form
+  const verifyEmailForm = useForm<VerifyEmailFormValues>({
+    resolver: zodResolver(verifyEmailSchema),
+    defaultValues: {
+      code: "",
+    },
+  });
+
   // Handle login submission
   const onLoginSubmit = async (values: LoginFormValues) => {
     try {
@@ -158,21 +177,31 @@ export default function AuthPage() {
     }
   };
 
-  // Handle signup submission
-  const onSignupSubmit = async (values: SignupFormValues) => {
+  // Handle email verification submission
+  const onVerifyEmailSubmit = async (values: VerifyEmailFormValues) => {
     try {
       setIsLoading(true);
 
+      // Verify the email code
+      await dbHelpers.verifyEmailCode(verificationEmail, values.code);
+
+      // Get stored signup data
+      const pendingSignupData = localStorage.getItem("pendingSignup");
+      if (!pendingSignupData) {
+        throw new Error("Signup session expired. Please try again.");
+      }
+
+      const signupData = JSON.parse(pendingSignupData);
+
       // Create user in Supabase Auth
       const { data, error } = await supabase.auth.signUp({
-        email: values.email,
-        password: values.password,
+        email: signupData.email,
+        password: signupData.password,
         options: {
           data: {
-            full_name: values.fullName,
-            preferred_currency: values.currency,
+            full_name: signupData.fullName,
+            preferred_currency: signupData.currency,
           },
-          emailRedirectTo: `${window.location.origin}/auth/verify`,
         },
       });
 
@@ -180,14 +209,56 @@ export default function AuthPage() {
         throw error;
       }
 
-      // If successful, show success message and switch to login tab
-      alert(
-        "Account created successfully! Please check your email for verification.",
-      );
+      // Clean up stored data
+      localStorage.removeItem("pendingSignup");
+
+      // Reset verification states
+      setShowEmailVerification(false);
+      setVerificationSent(false);
+      setVerificationEmail("");
+
+      alert("Account created successfully! You can now log in.");
       setActiveTab("login");
     } catch (error) {
+      console.error("Email verification error:", error);
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Failed to verify email. Please try again.",
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Handle signup submission
+  const onSignupSubmit = async (values: SignupFormValues) => {
+    try {
+      setIsLoading(true);
+
+      // Send verification email first
+      await dbHelpers.sendVerificationEmail(values.email, values.fullName);
+
+      // Store signup data temporarily for after verification
+      localStorage.setItem(
+        "pendingSignup",
+        JSON.stringify({
+          email: values.email,
+          password: values.password,
+          fullName: values.fullName,
+          currency: values.currency,
+        }),
+      );
+
+      // Show email verification form
+      setVerificationEmail(values.email);
+      setVerificationSent(true);
+      setShowEmailVerification(true);
+
+      alert("Verification code sent to your email. Please check your inbox.");
+    } catch (error) {
       console.error("Signup error:", error);
-      alert("Failed to create account. Please try again.");
+      alert("Failed to send verification email. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -522,6 +593,99 @@ export default function AuthPage() {
           </div>
         </CardFooter>
       </Card>
+
+      {/* Email Verification Modal */}
+      {showEmailVerification && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <Card className="w-full max-w-md">
+            <CardHeader>
+              <CardTitle className="text-xl font-bold text-center">
+                Verify Your Email
+              </CardTitle>
+              <CardDescription className="text-center">
+                We've sent a 6-digit code to {verificationEmail}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Form {...verifyEmailForm}>
+                <form
+                  onSubmit={verifyEmailForm.handleSubmit(onVerifyEmailSubmit)}
+                  className="space-y-4"
+                >
+                  <FormField
+                    control={verifyEmailForm.control}
+                    name="code"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Verification Code</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="Enter 6-digit code"
+                            {...field}
+                            className="text-center tracking-widest text-lg"
+                            maxLength={6}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <div className="flex space-x-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="flex-1"
+                      onClick={() => {
+                        setShowEmailVerification(false);
+                        setVerificationSent(false);
+                        setVerificationEmail("");
+                        localStorage.removeItem("pendingSignup");
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="submit"
+                      className="flex-1"
+                      disabled={isLoading}
+                    >
+                      {isLoading ? "Verifying..." : "Verify Email"}
+                    </Button>
+                  </div>
+                  <div className="text-center">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          setIsLoading(true);
+                          const pendingSignupData =
+                            localStorage.getItem("pendingSignup");
+                          if (pendingSignupData) {
+                            const signupData = JSON.parse(pendingSignupData);
+                            await dbHelpers.sendVerificationEmail(
+                              verificationEmail,
+                              signupData.fullName,
+                            );
+                            alert("New verification code sent!");
+                          }
+                        } catch (error) {
+                          alert("Failed to resend code. Please try again.");
+                        } finally {
+                          setIsLoading(false);
+                        }
+                      }}
+                      className="text-sm text-primary hover:underline"
+                      disabled={isLoading}
+                    >
+                      Resend Code
+                    </button>
+                  </div>
+                </form>
+              </Form>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Forgot Password Modal */}
       {showForgotPassword && (
