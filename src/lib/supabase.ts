@@ -351,22 +351,50 @@ export const dbHelpers = {
   // Email verification operations
   async sendVerificationEmail(email: string, fullName: string) {
     try {
+      // Enhanced input validation
+      if (!email || typeof email !== "string") {
+        throw new Error("Email is required and must be a string");
+      }
+
+      if (fullName && typeof fullName !== "string") {
+        throw new Error("Full name must be a string if provided");
+      }
+
       // Validate email format before sending
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(email)) {
         throw new Error("Invalid email format");
       }
 
+      // Check if email is too long (common email length limit)
+      if (email.length > 254) {
+        throw new Error("Email address is too long");
+      }
+
       const { data, error } = await supabase.functions.invoke(
         "supabase-functions-send-verification-email",
         {
-          body: { email, fullName },
+          body: {
+            email: email.toLowerCase().trim(),
+            fullName: fullName?.trim(),
+          },
         },
       );
 
       if (error) {
         console.error("Email sending error:", error);
-        throw new Error(error.message || "Failed to send verification email");
+        // Provide more specific error messages based on error type
+        if (error.message?.includes("configuration")) {
+          throw new Error(
+            "Email service is not properly configured. Please contact support.",
+          );
+        } else if (error.message?.includes("rate limit")) {
+          throw new Error(
+            "Too many verification emails sent. Please wait before requesting another.",
+          );
+        } else {
+          throw new Error(error.message || "Failed to send verification email");
+        }
       }
 
       return data;

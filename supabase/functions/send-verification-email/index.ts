@@ -2,6 +2,15 @@ import { corsHeaders } from "@shared/cors.ts";
 import { createTransporter } from "@shared/email.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+// Enhanced error logging utility
+const logError = (context: string, error: any) => {
+  console.error(`[${context}] Error:`, {
+    message: error?.message || "Unknown error",
+    stack: error?.stack,
+    timestamp: new Date().toISOString(),
+  });
+};
+
 Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
@@ -12,7 +21,31 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const requestBody = await req.json();
+    // Validate request method
+    if (req.method !== "POST") {
+      return new Response(
+        JSON.stringify({ error: "Method not allowed. Use POST." }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 405,
+        },
+      );
+    }
+
+    let requestBody;
+    try {
+      requestBody = await req.json();
+    } catch (parseError) {
+      logError("JSON_PARSE", parseError);
+      return new Response(
+        JSON.stringify({ error: "Invalid JSON in request body" }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 400,
+        },
+      );
+    }
+
     const { email, fullName } = requestBody;
 
     if (!email || typeof email !== "string") {
@@ -34,9 +67,24 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Initialize Supabase client
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_KEY")!;
+    // Initialize Supabase client with validation
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_KEY");
+
+    if (!supabaseUrl || !supabaseServiceKey) {
+      logError(
+        "ENV_VALIDATION",
+        new Error("Missing required environment variables"),
+      );
+      return new Response(
+        JSON.stringify({ error: "Server configuration error" }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 500,
+        },
+      );
+    }
+
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Generate 6-digit verification code
@@ -67,9 +115,15 @@ Deno.serve(async (req) => {
       });
 
     if (dbError) {
-      console.error("Database error:", dbError);
+      logError("DATABASE_INSERT", dbError);
       return new Response(
-        JSON.stringify({ error: "Failed to store verification code" }),
+        JSON.stringify({
+          error: "Failed to store verification code",
+          details:
+            process.env.NODE_ENV === "development"
+              ? dbError.message
+              : undefined,
+        }),
         {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
           status: 500,
@@ -77,8 +131,20 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Create email transporter
-    const transporter = await createTransporter();
+    // Create email transporter with error handling
+    let transporter;
+    try {
+      transporter = await createTransporter();
+    } catch (transporterError) {
+      logError("EMAIL_TRANSPORTER", transporterError);
+      return new Response(
+        JSON.stringify({ error: "Email service configuration error" }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 500,
+        },
+      );
+    }
 
     // Email template
     const htmlContent = `
@@ -159,14 +225,44 @@ Deno.serve(async (req) => {
       This is an automated message. Please do not reply to this email.
     `;
 
-    // Send email
-    await transporter.sendMail({
-      from: `"Financial Assistant" <${Deno.env.get("SMTP_FROM_EMAIL")}>`,
-      to: email,
-      subject: "Verify Your Email - Financial Assistant",
-      text: textContent,
-      html: htmlContent,
-    });
+    // Send email with enhanced error handling
+    try {
+      const fromEmail = Deno.env.get("SMTP_FROM_EMAIL");
+      if (!fromEmail) {
+        throw new Error("SMTP_FROM_EMAIL environment variable is not set");
+      }
+
+      await transporter.sendMail({
+        from: `"Financial Assistant" <${fromEmail}>`,
+        to: email,
+        subject: "Verify Your Email - Financial Assistant",
+        text: textContent,
+        html: htmlContent,
+      });
+    } catch (emailError) {
+      logError("EMAIL_SEND", emailError);
+
+      // Clean up the verification code if email fails
+      await supabase
+        .from("email_verifications")
+        .delete()
+        .eq("email", email)
+        .eq("code", verificationCode);
+
+      return new Response(
+        JSON.stringify({
+          error: "Failed to send verification email",
+          details:
+            process.env.NODE_ENV === "development"
+              ? emailError.message
+              : undefined,
+        }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 500,
+        },
+      );
+    }
 
     return new Response(
       JSON.stringify({
@@ -179,9 +275,13 @@ Deno.serve(async (req) => {
       },
     );
   } catch (error) {
-    console.error("Error sending verification email:", error);
+    logError("GENERAL_ERROR", error);
     return new Response(
-      JSON.stringify({ error: "Failed to send verification email" }),
+      JSON.stringify({
+        error: "Internal server error",
+        details:
+          process.env.NODE_ENV === "development" ? error.message : undefined,
+      }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 500,

@@ -62,10 +62,15 @@ class SMTPTransporter implements EmailTransporter {
     // 3. Send the email
     // 4. Handle responses and errors
 
-    // Validate SMTP configuration
-    if (!this.smtpHost || !this.smtpUser || !this.smtpPass) {
+    // Validate SMTP configuration with detailed error messages
+    const missingVars = [];
+    if (!this.smtpHost) missingVars.push("SMTP_HOST");
+    if (!this.smtpUser) missingVars.push("SMTP_USER");
+    if (!this.smtpPass) missingVars.push("SMTP_PASS");
+
+    if (missingVars.length > 0) {
       throw new Error(
-        "SMTP configuration is incomplete. Please set SMTP_HOST, SMTP_USER, SMTP_PASS, and SMTP_FROM_EMAIL environment variables.",
+        `SMTP configuration is incomplete. Missing environment variables: ${missingVars.join(", ")}. Please set these variables in your project settings.`,
       );
     }
 
